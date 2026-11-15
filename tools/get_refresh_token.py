@@ -42,8 +42,10 @@ CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "SEU_CLIENT_ID_AQUI")
 CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "SEU_CLIENT_SECRET_AQUI")
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
 
-# Escopos necessários (somente leitura do player)
-SCOPES = "user-read-currently-playing user-read-playback-state"
+# Escopos: leitura do player + controle (play/pause/próxima/anterior).
+# O controle só funciona com conta Premium. Sem Premium, a tela continua
+# mostrando a música; só os botões respondem "Precisa Spotify Premium".
+SCOPES = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
 
 # Porta do servidor local para receber o callback
 PORT = 8888

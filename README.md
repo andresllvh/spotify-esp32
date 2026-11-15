@@ -1,229 +1,181 @@
-# ESP32 Spotify Now Playing
+# Spotify Now Playing - chaveiro com ESP32-C3
 
-Real-time Spotify "Now Playing" display using an ESP32-2432S028R (Cheap Yellow Display) with album art, scrolling text, progress bar, and RGB LED status indicator.
+Mini player do Spotify em formato de chaveiro: mostra a música que está tocando no celular, com capa do álbum, nome rolando, equalizador animado, barra de progresso e 3 botões para voltar, pausar e pular. Funciona com bateria própria.
 
-> **[Leia em Português](#português)** abaixo.
+> Spotify "Now Playing" keychain built with an ESP32-C3 Super Mini and a 1.8" ST7735 TFT (160x128), with album art, marquee text, progress bar and physical playback buttons. Fork of [jnrtxr/spotify-esp32](https://github.com/jnrtxr/spotify-esp32), adapted from the ESP32-2432S028R (CYD) to the C3 + ST7735.
 
-## Hardware
+| Tocando | Pausado |
+| :---: | :---: |
+| ![Tela tocando](docs/tela-tocando.png) | ![Tela pausada](docs/tela-pausado.png) |
 
-- **ESP32-2432S028R** (Cheap Yellow Display / CYD)
-- Built-in **ILI9341 2.8" TFT LCD** 320x240 with resistive touch
-- Built-in **RGB LED** for playback status
-
-### Display Configuration (CYD pinout)
-
-| Function | GPIO |
-|----------|------|
-| MOSI | 13 |
-| MISO | 12 |
-| SCLK | 14 |
-| CS | 15 |
-| DC | 2 |
-| RST | -1 (tied to EN) |
-| Backlight | 21 |
-
-### RGB LED
-
-| Color | Meaning | GPIO |
-|-------|---------|------|
-| Green | Playing | 4 (R), 16 (G), 17 (B) |
-| Blue | Paused | |
-| Red | Error | |
-| Off | Nothing playing | |
-
-## Features
-
-- Wi-Fi via captive portal (WiFiManager) — no hardcoded credentials
-- Spotify API polling every ~4 seconds
-- Landscape layout: album cover (150x150) on the left, track info on the right
-- Scrolling marquee text for long song titles and artist names (synchronized)
-- Play/pause icon indicator
-- Progress bar with elapsed/total time
-- RGB LED changes color based on playback state
-- Automatic token renewal (~1h)
-- Credentials stored in NVS (survives reboot)
-- Handles: nothing playing, paused, network error, rate limit (429)
-- Auto-recovers when Spotify is reopened (same track detection)
-
-## Initial Setup
-
-### 1. Create a Spotify Developer App
-
-1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
-2. Create a new app
-3. In **Settings** → **Redirect URIs**, add: `http://127.0.0.1:8888/callback`
-4. Copy the **Client ID** and **Client Secret**
-
-### 2. Get Refresh Token (run once on PC)
-
-```bash
-cd tools
-pip install -r requirements.txt
-python get_refresh_token.py
-```
-
-### 3. Flash Firmware
-
-```bash
-pip install platformio
-python -m platformio run -t upload
-```
-
-### 4. Send Credentials via Serial
-
-```bash
-python -m platformio device monitor
-```
-
-Then type:
-```
-SET_CREDS:your_client_id:your_client_secret:your_refresh_token
-```
-
-### 5. Configure Wi-Fi
-
-On first boot:
-1. Connect to **SpotifyDisplay-Setup** AP from your phone
-2. Select your Wi-Fi and enter password
-3. ESP32 saves and reboots connected
-
-## Serial Commands
-
-| Command | Description |
-|---------|-------------|
-| `SET_CREDS:id:secret:token` | Save credentials to NVS |
-| `RESET_WIFI` | Erase saved Wi-Fi (reopens portal) |
-| `STATUS` | Show current state, free RAM |
-
-## PC Simulator
-
-Preview the display layout without hardware:
-
-```bash
-cd tools
-pip install -r requirements.txt
-python display_simulator.py
-```
-
-## Project Structure
-
-```
-├── platformio.ini              # PlatformIO config (ESP32-2432S028R / CYD)
-├── include/
-│   ├── secrets.h.example       # Credentials template
-│   ├── display_driver.h        # Display abstraction
-│   ├── wifi_manager_setup.h    # Wi-Fi captive portal
-│   ├── spotify_auth.h          # OAuth management
-│   ├── spotify_poller.h        # API polling
-│   ├── json_parser.h           # JSON parser with filters
-│   └── ui_renderer.h           # UI rendering + marquee
-├── src/
-│   ├── main.cpp                # State machine + RGB LED
-│   ├── display_driver.cpp
-│   ├── wifi_manager_setup.cpp
-│   ├── spotify_auth.cpp
-│   ├── spotify_poller.cpp
-│   ├── json_parser.cpp
-│   └── ui_renderer.cpp
-└── tools/
-    ├── get_refresh_token.py    # OAuth helper (run on PC)
-    ├── test_api.py             # API test (terminal)
-    └── display_simulator.py    # Visual simulator (tkinter)
-```
-
-## Libraries
-
-- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI) — SPI display driver
-- [TJpg_Decoder](https://github.com/Bodmer/TJpg_Decoder) — Lightweight JPEG decoder
-- [ArduinoJson](https://arduinojson.org/) — JSON parser with filters
-- [WiFiManager](https://github.com/tzapu/WiFiManager) — Wi-Fi captive portal
-
----
-
-# Português
-
-## ESP32 Spotify Now Playing
-
-Display em tempo real da música tocando no Spotify usando ESP32-2432S028R (Cheap Yellow Display) com capa do álbum, texto com scroll, barra de progresso e LED RGB indicador de estado.
+*Imagens do simulador incluído no projeto (`tools/display_simulator.py`).*
 
 ## Hardware
 
-- **ESP32-2432S028R** (Cheap Yellow Display / CYD)
-- Display **ILI9341 2.8" TFT LCD** 320x240 embutido com touch resistivo
-- **LED RGB** embutido para indicar estado de reprodução
+| Peça | Observação |
+| :--- | :--- |
+| ESP32-C3 Super Mini | Wi-Fi, USB-C, 4 MB de flash |
+| Display TFT 1.8" SPI ST7735 128x160 | Módulo de 8 pinos |
+| 3 botões táteis 6x6 mm | Anterior, play/pause, próxima |
+| Módulo carregador TP4056 USB-C com proteção | Carrega a bateria |
+| Bateria Li-Po 3,7 V 400 mAh (602035 ou 702030) | Com proteção (PCM) |
+| Chave deslizante SS12D00G3 | Liga e desliga |
+| Placa perfurada 5x7 cm, fios 24 AWG | Montagem |
 
-## Funcionalidades
+## Ligações
 
-- Wi-Fi via portal cativo (WiFiManager) — sem credenciais hardcoded
-- Polling da API do Spotify a cada ~4 segundos
-- Layout paisagem: capa (150x150) à esquerda, info à direita
-- Texto com marquee (scroll) para títulos e artistas longos (sincronizados)
-- Ícone de play/pause
-- Barra de progresso com tempo decorrido/total
-- LED RGB muda de cor conforme estado (verde=tocando, azul=pausado, vermelho=erro)
-- Renovação automática do token (~1h)
-- Credenciais na NVS (sobrevive reboot)
-- Trata: nada tocando, pausado, erro de rede, rate limit (429)
-- Recupera automaticamente quando o Spotify é reaberto (mesma música)
+### Display
 
-## Setup
+| Display | ESP32-C3 |
+| :--- | :--- |
+| VCC | 3V3 |
+| GND | GND |
+| SCK / SCL | GPIO4 |
+| SDA / MOSI | GPIO6 |
+| CS | GPIO7 |
+| A0 / DC / RS | GPIO3 |
+| RESET / RES | GPIO10 |
+| LED / BL | GPIO5 |
 
-### 1. Criar App no Spotify Developer
+Os nomes SCL e SDA no módulo enganam: a tela é SPI, não I2C.
 
-1. Acesse [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
-2. Crie um app
-3. Em **Settings** → **Redirect URIs**, adicione: `http://127.0.0.1:8888/callback`
-4. Copie **Client ID** e **Client Secret**
+### Botões
 
-### 2. Obter Refresh Token (rodar uma vez no PC)
+Cada botão tem um lado no GPIO e o outro no GND. Não precisa de resistor, porque o código liga o pull-up interno.
+
+| Botão | ESP32-C3 |
+| :--- | :--- |
+| Anterior | GPIO0 |
+| Play / pause | GPIO1 |
+| Próxima | GPIO20 |
+
+Os pinos GPIO2, GPIO8 e GPIO9 controlam o boot do C3 e ficam livres. O GPIO8 é o LED azul da placa, que acende enquanto a música toca.
+
+### Bateria
+
+```
+Bateria +  -> TP4056 B+
+Bateria -  -> TP4056 B-
+TP4056 OUT+ -> chave -> ESP32-C3 5V
+TP4056 OUT- -> ESP32-C3 GND
+```
+
+- Confira a polaridade da bateria antes de soldar. Inverter queima o TP4056.
+- Desligue a chave antes de gravar o código pela USB da ESP32.
+- Para carregar, use a porta USB-C do TP4056. O LED vermelho indica carga e o verde, carga completa.
+
+## Configuração
+
+### 1. App no Spotify
+
+1. Acesse o [painel de desenvolvedor do Spotify](https://developer.spotify.com/dashboard) e crie um app.
+2. Em Settings, adicione o Redirect URI `http://127.0.0.1:8888/callback`.
+3. Copie o Client ID e o Client Secret.
+
+Os botões usam a API de controle do player, que exige conta Premium. Quando a conta não tem permissão, a tela avisa "Precisa Spotify Premium". Confira também as regras atuais do modo de desenvolvedor no painel do Spotify, que podem exigir Premium na conta dona do app.
+
+### 2. Refresh token (uma vez, no computador)
 
 ```bash
 cd tools
 pip install -r requirements.txt
+export SPOTIFY_CLIENT_ID=seu_client_id
+export SPOTIFY_CLIENT_SECRET=seu_client_secret
 python get_refresh_token.py
 ```
 
-### 3. Gravar Firmware
+O navegador abre o login do Spotify. No fim, o script mostra o comando `SET_CREDS:...` pronto para copiar.
+
+### 3. Gravar o firmware
 
 ```bash
 pip install platformio
-python -m platformio run -t upload
+pio run -t upload
 ```
 
-### 4. Enviar Credenciais via Serial
+Se a placa não aparecer, segure o botão BOOT, aperte RESET e solte o BOOT. Isso coloca o C3 em modo de gravação.
+
+### 4. Enviar as credenciais
 
 ```bash
-python -m platformio device monitor
+pio device monitor
 ```
 
-Digite:
+Cole o comando gerado no passo 2 e aperte Enter:
+
 ```
-SET_CREDS:seu_client_id:seu_client_secret:seu_refresh_token
+SET_CREDS:client_id:client_secret:refresh_token
 ```
 
-### 5. Configurar Wi-Fi
+As credenciais ficam na memória da placa e sobrevivem a reinícios.
 
-Na primeira execução:
-1. Conecte no AP **SpotifyDisplay-Setup** pelo celular
-2. Selecione sua rede e digite a senha
-3. ESP32 salva e reinicia conectado
+### 5. Wi-Fi
 
-## Comandos Serial
+Na primeira vez, a placa cria a rede `SpotifyDisplay-Setup`. Conecte pelo celular, escolha o seu Wi-Fi e digite a senha. A placa salva e reinicia conectada.
 
-| Comando | Descrição |
-|---------|-----------|
-| `SET_CREDS:id:secret:token` | Grava credenciais na NVS |
-| `RESET_WIFI` | Apaga Wi-Fi salvo (reabre portal) |
-| `STATUS` | Mostra estado atual, RAM livre |
+## Uso
 
-## Simulador no PC
+- A tela atualiza a cada 4 segundos. A barra de progresso avança sozinha entre as consultas.
+- Os botões controlam o aparelho que está tocando o Spotify, como o celular.
+- Depois de 2 minutos sem música tocando, a tela apaga para poupar bateria. Qualquer botão acende de novo.
+- Com a bateria de 400 mAh, a autonomia estimada é de 3 a 4 horas com a tela ligada.
+
+### Comandos pela USB
+
+| Comando | O que faz |
+| :--- | :--- |
+| `SET_CREDS:id:secret:token` | Grava as credenciais do Spotify |
+| `RESET_WIFI` | Apaga o Wi-Fi salvo e reabre o portal |
+| `STATUS` | Mostra estado, sinal do Wi-Fi e memória livre |
+
+## Simulador
+
+Para ver o layout no computador, sem a placa:
 
 ```bash
 cd tools
-pip install -r requirements.txt
-python display_simulator.py
+python display_simulator.py --demo
 ```
 
-## Licença
+No modo demo, espaço pausa e as setas trocam de música. Sem `--demo`, o simulador lê o Spotify de verdade usando `tools/.env` (veja `tools/.env.example`).
 
-MIT
+No macOS com Python do Homebrew, o Tkinter vem separado. Instale com `brew install python-tk`.
+
+## Ajustes
+
+- **Cores ou bordas erradas na tela:** troque `-DST7735_BLACKTAB=1` no `platformio.ini` por `ST7735_GREENTAB`, `ST7735_GREENTAB2` ou `ST7735_REDTAB`.
+- **Tela de cabeça para baixo:** mude `DISPLAY_ROTATION` de 1 para 3 em `include/display_driver.h`.
+- **Outros pinos:** todos ficam nos `build_flags` do `platformio.ini`.
+- **Layout:** posições e tamanhos ficam em `include/ui_renderer.h`.
+
+## Estrutura
+
+```
+├── platformio.ini            # placa, pinos e bibliotecas
+├── include/ e src/
+│   ├── main.cpp              # máquina de estados, botões e economia de bateria
+│   ├── display_driver        # ST7735 via TFT_eSPI
+│   ├── ui_renderer           # layout 160x128, marquee, equalizador
+│   ├── spotify_auth          # renovação do token (OAuth)
+│   ├── spotify_poller        # consulta da música atual e da capa
+│   ├── spotify_control       # play, pause, próxima e anterior
+│   ├── buttons               # leitura dos botões com debounce
+│   ├── json_parser           # parse com filtro (pouca RAM)
+│   └── wifi_manager_setup    # portal cativo do Wi-Fi
+├── tools/
+│   ├── get_refresh_token.py  # login OAuth no computador
+│   ├── display_simulator.py  # simulador da tela
+│   └── test_api.py           # teste da API no terminal
+└── docs/                     # imagens do README
+```
+
+## Bibliotecas
+
+- [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI): driver do display
+- [TJpg_Decoder](https://github.com/Bodmer/TJpg_Decoder): decodificador JPEG da capa
+- [ArduinoJson](https://arduinojson.org/): parse da resposta da API
+- [WiFiManager](https://github.com/tzapu/WiFiManager): portal de configuração do Wi-Fi
+
+## Créditos
+
+Baseado no projeto [jnrtxr/spotify-esp32](https://github.com/jnrtxr/spotify-esp32), de Junior Silva, publicado sob a licença MIT. Esta versão adapta o firmware para a ESP32-C3 com display ST7735, refaz o layout para 160x128 e adiciona botões físicos, alimentação por bateria e o modo demo do simulador.

@@ -1,59 +1,50 @@
 // ============================================================
 // main.cpp
 // ============================================================
-// Ponto de entrada do firmware ESP32 Spotify Now Playing.
-// Orquestra todos os módulos usando uma máquina de estados.
+// Spotify Now Playing para chaveiro (ESP32-C3 + TFT ST7735).
 //
 // Estados:
-//   BOOT        → Inicializa periféricos
-//   WIFI_SETUP  → Conecta via WiFiManager (portal cativo)
-//   AUTH_INIT   → Carrega credenciais e obtém primeiro token
-//   POLLING     → Loop principal: poll + render + interpolação
-//   ERROR       → Exibe erro, tenta recuperar
+//   BOOT        -> inicializa display, botões e LED
+//   WIFI_SETUP  -> conecta via WiFiManager (portal cativo na 1a vez)
+//   AUTH_INIT   -> carrega credenciais e obtém o primeiro token
+//   POLLING     -> consulta a API, desenha a tela e lê os botões
+//   ERROR       -> mostra o erro e tenta se recuperar
 //
-// O loop principal avança a barra de progresso localmente usando
-// millis(), sem gastar requisição HTTP. Só resincroniza no poll.
+// Entre as consultas, a barra de progresso avança localmente com
+// millis(), sem gastar requisição HTTP.
 // ============================================================
 
 #include <Arduino.h>
 #include <WiFi.h>
 
-// Módulos do projeto
 #include "display_driver.h"
 #include "wifi_manager_setup.h"
 #include "spotify_auth.h"
 #include "spotify_poller.h"
+#include "spotify_control.h"
 #include "json_parser.h"
 #include "ui_renderer.h"
+#include "buttons.h"
 
-// ---- LED RGB (CYD - ativo em LOW) ----
-#define LED_R 4
-#define LED_G 16
-#define LED_B 17
+// ---- LED azul da placa (indica que está tocando) ----
+#ifndef PIN_STATUS_LED
+#define PIN_STATUS_LED 8
+#endif
 
-void led_init() {
-    pinMode(LED_R, OUTPUT);
-    pinMode(LED_G, OUTPUT);
-    pinMode(LED_B, OUTPUT);
-    // Desliga tudo (HIGH = off)
-    digitalWrite(LED_R, HIGH);
-    digitalWrite(LED_G, HIGH);
-    digitalWrite(LED_B, HIGH);
+static void led_init() {
+    pinMode(PIN_STATUS_LED, OUTPUT);
 }
 
-void led_set(bool r, bool g, bool b) {
-    digitalWrite(LED_R, r ? LOW : HIGH);
-    digitalWrite(LED_G, g ? LOW : HIGH);
-    digitalWrite(LED_B, b ? LOW : HIGH);
+static void led_set(bool on) {
+    #if defined(STATUS_LED_ACTIVE_LOW) && STATUS_LED_ACTIVE_LOW
+        digitalWrite(PIN_STATUS_LED, on ? LOW : HIGH);
+    #else
+        digitalWrite(PIN_STATUS_LED, on ? HIGH : LOW);
+    #endif
 }
-
-void led_off()     { led_set(false, false, false); }
-void led_green()   { led_set(false, true, false); }   // Tocando
-void led_blue()    { led_set(false, false, true); }   // Pausado
-void led_red()     { led_set(true, false, false); }   // Erro
 
 // ============================================================
-// Máquina de estados principal
+// Estado
 // ============================================================
 enum AppState {
     STATE_BOOT,
@@ -65,250 +56,261 @@ enum AppState {
 
 static AppState s_state = STATE_BOOT;
 
-// ---- Timers ----
-static unsigned long s_last_poll_time = 0;         // Quando foi o último poll
-static unsigned long s_last_marquee_time = 0;      // Timer do marquee
-static unsigned long s_last_progress_time = 0;     // Timer da barra de progresso
-static unsigned long s_progress_sync_millis = 0;   // millis() no momento do último sync
+static unsigned long s_last_poll_time = 0;
+static unsigned long s_last_marquee_time = 0;
+static unsigned long s_last_progress_time = 0;
+static unsigned long s_last_eq_time = 0;
+static unsigned long s_progress_sync_millis = 0;
+static unsigned long s_last_activity = 0;   // último momento tocando ou botão apertado
 
-// ---- Estado de reprodução local ----
-static uint32_t s_local_progress_ms = 0;   // Progresso interpolado localmente
-static uint32_t s_duration_ms = 0;         // Duração do track atual
-static bool s_is_playing = false;          // Se está tocando (para interpolação)
-static bool s_has_track = false;           // Se há algo para mostrar
+static uint32_t s_local_progress_ms = 0;
+static uint32_t s_duration_ms = 0;
+static bool s_is_playing = false;
+static bool s_has_track = false;
 
-// ---- Controle de erro ----
 static int s_error_count = 0;
 static const int MAX_ERRORS_BEFORE_RECONNECT = 5;
 
-// ---- Intervalo de atualização da UI ----
-#define MARQUEE_UPDATE_MS   80    // Atualiza marquee a cada 80ms (mais lento e suave)
-#define PROGRESS_UPDATE_MS  1000  // Atualiza barra a cada 1 segundo
+#define MARQUEE_UPDATE_MS    80
+#define PROGRESS_UPDATE_MS   1000
+#define EQ_UPDATE_MS         120
+
+// Apaga a tela depois de 2 min sem nada tocando (economiza bateria).
+// Qualquer botão ou música nova acende de novo.
+#define SCREEN_OFF_AFTER_MS  120000UL
 
 // ============================================================
-// Funções auxiliares de configuração Serial
+// Comandos via Serial (USB)
 // ============================================================
+static void check_serial_commands() {
+    if (!Serial.available()) return;
 
-/// Verifica se há comandos via Serial para gravar credenciais.
-/// Formato: SET_CREDS:client_id:client_secret:refresh_token
-void check_serial_commands() {
-    if (Serial.available()) {
-        String input = Serial.readStringUntil('\n');
-        input.trim();
+    String input = Serial.readStringUntil('\n');
+    input.trim();
 
-        if (input.startsWith("SET_CREDS:")) {
-            // Remove prefixo
-            input = input.substring(10);
+    if (input.startsWith("SET_CREDS:")) {
+        input = input.substring(10);
+        int sep1 = input.indexOf(':');
+        int sep2 = input.indexOf(':', sep1 + 1);
 
-            // Separa por ':'
-            int sep1 = input.indexOf(':');
-            int sep2 = input.indexOf(':', sep1 + 1);
-
-            if (sep1 > 0 && sep2 > sep1) {
-                String client_id = input.substring(0, sep1);
-                String client_secret = input.substring(sep1 + 1, sep2);
-                String refresh_token = input.substring(sep2 + 1);
-
-                Serial.println("[MAIN] Salvando credenciais na NVS...");
-                spotify_auth_save_credentials(
-                    client_id.c_str(),
-                    client_secret.c_str(),
-                    refresh_token.c_str()
-                );
-                Serial.println("[MAIN] Credenciais salvas! Reiniciando...");
-                delay(1000);
-                ESP.restart();
-            } else {
-                Serial.println("[MAIN] Formato invalido!");
-                Serial.println("[MAIN] Use: SET_CREDS:client_id:client_secret:refresh_token");
-            }
-        }
-        else if (input == "RESET_WIFI") {
-            Serial.println("[MAIN] Resetando credenciais Wi-Fi...");
-            wifi_reset_credentials();
-            Serial.println("[MAIN] Reiniciando...");
+        if (sep1 > 0 && sep2 > sep1) {
+            spotify_auth_save_credentials(
+                input.substring(0, sep1).c_str(),
+                input.substring(sep1 + 1, sep2).c_str(),
+                input.substring(sep2 + 1).c_str());
+            Serial.println("[MAIN] Credenciais salvas! Reiniciando...");
             delay(1000);
             ESP.restart();
+        } else {
+            Serial.println("[MAIN] Formato invalido. Use: SET_CREDS:client_id:client_secret:refresh_token");
         }
-        else if (input == "STATUS") {
-            Serial.printf("[MAIN] Estado: %d\n", s_state);
-            Serial.printf("[MAIN] Wi-Fi: %s\n", wifi_is_connected() ? "OK" : "Desconectado");
-            Serial.printf("[MAIN] Token: %s\n", spotify_auth_token_expired() ? "Expirado" : "Válido");
-            Serial.printf("[MAIN] Free heap: %u bytes\n", ESP.getFreeHeap());
-            Serial.printf("[MAIN] Free PSRAM: %u bytes\n", ESP.getFreePsram());
-        }
+    } else if (input == "RESET_WIFI") {
+        wifi_reset_credentials();
+        Serial.println("[MAIN] Wi-Fi apagado. Reiniciando...");
+        delay(1000);
+        ESP.restart();
+    } else if (input == "STATUS") {
+        Serial.printf("[MAIN] Estado: %d\n", s_state);
+        Serial.printf("[MAIN] Wi-Fi: %s (RSSI %d dBm)\n",
+                      wifi_is_connected() ? "OK" : "Desconectado", WiFi.RSSI());
+        Serial.printf("[MAIN] Token: %s\n", spotify_auth_token_expired() ? "Expirado" : "Valido");
+        Serial.printf("[MAIN] Heap livre: %u bytes (minimo %u)\n",
+                      ESP.getFreeHeap(), ESP.getMinFreeHeap());
     }
 }
 
 // ============================================================
-// handle_state_boot()
-// Inicializa todos os periféricos e módulos
+// Tela ligada / desligada
 // ============================================================
-void handle_state_boot() {
-    Serial.println("\n====================================");
-    Serial.println("  ESP32 Spotify Now Playing");
-    Serial.println("====================================");
-    Serial.printf("Free heap: %u bytes\n", ESP.getFreeHeap());
-    Serial.printf("Free PSRAM: %u bytes\n", ESP.getFreePsram());
-    Serial.println();
+static void mark_activity() {
+    s_last_activity = millis();
+    if (!display_backlight_is_on()) {
+        display_backlight(true);
+    }
+}
 
-    // Inicializa display
+static void update_screen_timeout() {
+    bool idle = !s_has_track || !s_is_playing;
+    if (idle && display_backlight_is_on() && millis() - s_last_activity > SCREEN_OFF_AFTER_MS) {
+        Serial.println("[MAIN] Sem musica ha um tempo, apagando a tela");
+        display_backlight(false);
+    }
+}
+
+// ============================================================
+// Botões
+// ============================================================
+static void show_control_result(ControlResult r) {
+    switch (r) {
+        case CONTROL_OK:           break;
+        case CONTROL_NEED_PREMIUM: ui_renderer_show_hint("Precisa Spotify Premium"); break;
+        case CONTROL_NO_DEVICE:    ui_renderer_show_hint("Abra o Spotify no celular"); break;
+        case CONTROL_ERROR:        ui_renderer_show_hint("Falha no comando"); break;
+    }
+}
+
+static void handle_buttons() {
+    ButtonEvent ev = buttons_poll();
+    if (ev == BUTTON_NONE) return;
+
+    // Com a tela apagada, o primeiro aperto só acende
+    bool was_off = !display_backlight_is_on();
+    mark_activity();
+    if (was_off) return;
+
+    ControlResult r = CONTROL_OK;
+    switch (ev) {
+        case BUTTON_PLAY: {
+            if (s_has_track) ui_renderer_flash_control(UI_CTRL_PLAY);
+            bool want_play = !s_is_playing;
+            r = want_play ? spotify_control_play() : spotify_control_pause();
+            if (r == CONTROL_OK && s_has_track) {
+                // Atualiza a tela na hora; o próximo poll confirma
+                s_local_progress_ms += millis() - s_progress_sync_millis;
+                if (s_local_progress_ms > s_duration_ms) s_local_progress_ms = s_duration_ms;
+                s_progress_sync_millis = millis();
+                s_is_playing = want_play;
+                led_set(want_play);
+                ui_renderer_update_play_state(want_play);
+            }
+            spotify_poller_set_next_interval(800);
+            break;
+        }
+        case BUTTON_NEXT:
+            if (s_has_track) ui_renderer_flash_control(UI_CTRL_NEXT);
+            r = spotify_control_next();
+            spotify_poller_set_next_interval(700);
+            break;
+        case BUTTON_PREV:
+            if (s_has_track) ui_renderer_flash_control(UI_CTRL_PREV);
+            r = spotify_control_previous();
+            spotify_poller_set_next_interval(700);
+            break;
+        default:
+            break;
+    }
+    show_control_result(r);
+    s_last_poll_time = millis();
+}
+
+// ============================================================
+// Estados
+// ============================================================
+static void handle_state_boot() {
+    Serial.println("\n====================================");
+    Serial.println("  Spotify Now Playing - chaveiro");
+    Serial.println("====================================");
+    Serial.printf("Heap livre: %u bytes\n\n", ESP.getFreeHeap());
+
+    led_init();
+    led_set(false);
+    buttons_init();
+
     display_init();
     ui_renderer_init();
-
-    // Inicializa LED RGB
-    led_init();
-
-    // Mostra tela de "Conectando..."
     ui_renderer_draw_connecting();
 
-    // Inicializa poller
     spotify_poller_init();
-
-    // Próximo estado
+    s_last_activity = millis();
     s_state = STATE_WIFI_SETUP;
 }
 
-// ============================================================
-// handle_state_wifi_setup()
-// Conecta via WiFiManager (portal cativo na primeira vez)
-// ============================================================
-void handle_state_wifi_setup() {
-    bool connected = wifi_setup_init();
-
-    if (connected) {
-        Serial.println("[MAIN] Wi-Fi OK! Iniciando autenticação...");
+static void handle_state_wifi_setup() {
+    if (wifi_setup_init()) {
         s_state = STATE_AUTH_INIT;
     } else {
-        Serial.println("[MAIN] Wi-Fi falhou. Reiniciando portal em 5s...");
         ui_renderer_draw_error("Wi-Fi desconectado");
         delay(5000);
-        ESP.restart(); // Reinicia para reabrir o portal
+        ESP.restart();  // reabre o portal
     }
 }
 
-// ============================================================
-// handle_state_auth_init()
-// Carrega credenciais e tenta obter o primeiro access_token
-// ============================================================
-void handle_state_auth_init() {
-    // Carrega credenciais da NVS
-    bool hasCredentials = spotify_auth_init();
-
-    if (!hasCredentials) {
-        Serial.println("[MAIN] Sem credenciais! Envie via Serial:");
+static void handle_state_auth_init() {
+    if (!spotify_auth_init()) {
+        Serial.println("[MAIN] Sem credenciais! Envie pela USB:");
         Serial.println("[MAIN] SET_CREDS:client_id:client_secret:refresh_token");
-        ui_renderer_draw_error("Credenciais ausentes");
-        ui_renderer_draw_connecting(); // Hint about setup
-
-        // Fica em loop esperando comandos Serial
+        ui_renderer_draw_need_credentials();
         while (!spotify_auth_has_credentials()) {
             check_serial_commands();
             delay(100);
         }
     }
 
-    // Tenta obter o primeiro access_token
     Serial.println("[MAIN] Obtendo access_token...");
-    bool tokenOk = spotify_auth_refresh();
-
-    if (tokenOk) {
-        Serial.println("[MAIN] Autenticação OK! Iniciando polling...");
+    if (spotify_auth_refresh()) {
         s_state = STATE_POLLING;
-        s_last_poll_time = 0; // Força primeiro poll imediato
+        s_last_poll_time = 0;
         s_error_count = 0;
+        ui_renderer_draw_idle();
     } else {
-        Serial.println("[MAIN] Falha na autenticação. Verifique credenciais.");
-        ui_renderer_draw_error("Auth falhou");
+        ui_renderer_draw_error("Login do Spotify falhou");
         delay(5000);
         s_state = STATE_ERROR;
     }
 }
 
-// ============================================================
-// handle_state_polling()
-// Loop principal: poll + render + interpolação local de progresso
-// ============================================================
-void handle_state_polling() {
+static void on_track_data(TrackInfo* track, bool track_changed) {
+    bool was_idle = !s_has_track;
+    s_has_track = true;
+
+    if (track->is_playing) mark_activity();
+
+    s_is_playing = track->is_playing;
+    s_duration_ms = track->duration_ms;
+    s_local_progress_ms = track->progress_ms;
+    s_progress_sync_millis = millis();
+    led_set(track->is_playing);
+
+    if (track_changed || was_idle) {
+        // Texto primeiro (aparece na hora), capa depois (precisa baixar)
+        display_clear();
+        ui_renderer_reset_cache();
+        ui_renderer_draw_cover_placeholder();
+        ui_renderer_draw_track(track);
+
+        uint8_t* cover = nullptr;
+        uint32_t size = spotify_poller_download_cover(track->cover_url, &cover);
+        if (size > 0 && cover) {
+            ui_renderer_draw_cover(cover, size);
+            spotify_poller_free_cover(cover);
+        }
+    } else {
+        ui_renderer_draw_track(track);
+    }
+}
+
+static void handle_state_polling() {
     unsigned long now = millis();
 
-    // ---- Verifica conexão Wi-Fi ----
     if (!wifi_is_connected()) {
-        Serial.println("[MAIN] Wi-Fi perdido! Tentando reconectar...");
-        ui_renderer_draw_error("Wi-Fi perdido...");
-
+        led_set(false);
+        ui_renderer_draw_error("Wi-Fi perdido");
         if (!wifi_reconnect()) {
-            s_error_count++;
-            if (s_error_count > MAX_ERRORS_BEFORE_RECONNECT) {
-                Serial.println("[MAIN] Muitos erros. Reiniciando...");
-                ESP.restart();
-            }
+            if (++s_error_count > MAX_ERRORS_BEFORE_RECONNECT) ESP.restart();
             delay(2000);
             return;
         }
         s_error_count = 0;
+        s_has_track = false;
+        s_last_poll_time = 0;
     }
 
-    // ---- Poll da API (a cada intervalo) ----
-    unsigned long poll_interval = spotify_poller_get_next_interval();
-    if (now - s_last_poll_time >= poll_interval) {
+    handle_buttons();
+
+    // ---- Consulta à API ----
+    if (now - s_last_poll_time >= spotify_poller_get_next_interval()) {
         s_last_poll_time = now;
 
-        PollResult result = spotify_poller_poll();
-
-        switch (result) {
+        switch (spotify_poller_poll()) {
             case POLL_OK_PLAYING:
-            case POLL_OK_PAUSED: {
+            case POLL_OK_PAUSED:
                 s_error_count = 0;
-                TrackInfo* track = json_parser_get_track();
-
-                // LED RGB conforme estado
-                if (track->is_playing) {
-                    led_green();
-                } else {
-                    led_blue();
-                }
-
-                // Atualiza estado local
-                s_is_playing = track->is_playing;
-                s_duration_ms = track->duration_ms;
-                s_local_progress_ms = track->progress_ms;
-                s_progress_sync_millis = millis(); // Marca momento do sync
-
-                // Detecta se voltou de "idle" para "tocando" (mesma música)
-                bool was_idle = !s_has_track;
-                s_has_track = true;
-
-                // Se o track mudou OU voltou do idle, redesenha tudo
-                if (spotify_poller_track_changed() || was_idle) {
-                    // Redesenha tela completa
-                    display_clear();
-                    ui_renderer_reset_cache();
-
-                    // Baixa e renderiza a capa
-                    uint8_t* cover_buf = nullptr;
-                    uint32_t cover_size = spotify_poller_download_cover(track->cover_url, &cover_buf);
-                    if (cover_size > 0 && cover_buf) {
-                        ui_renderer_draw_cover(cover_buf, cover_size);
-                        spotify_poller_free_cover(cover_buf);
-                    }
-
-                    // Desenha informações do track
-                    ui_renderer_draw_track(track);
-                } else {
-                    // Mesmo track: atualiza progresso e estado
-                    ui_renderer_update_progress(track->progress_ms, track->duration_ms, track->is_playing);
-                }
-
-                // Atualiza ícone play/pause a cada poll
-                ui_renderer_draw_track(track);
+                on_track_data(json_parser_get_track(), spotify_poller_track_changed());
                 break;
-            }
 
             case POLL_NO_CONTENT:
-                // Nada tocando
-                led_off();
-                if (s_has_track) { // Só redesenha se mudou
+                led_set(false);
+                if (s_has_track) {
                     ui_renderer_draw_idle();
                     s_has_track = false;
                     s_is_playing = false;
@@ -317,8 +319,6 @@ void handle_state_polling() {
                 break;
 
             case POLL_TOKEN_EXPIRED:
-                // Token expirado, tenta renovar
-                Serial.println("[MAIN] Token expirado, renovando...");
                 if (!spotify_auth_refresh()) {
                     s_error_count++;
                     ui_renderer_draw_error("Token expirado");
@@ -326,127 +326,80 @@ void handle_state_polling() {
                 break;
 
             case POLL_RATE_LIMITED:
-                // Rate limited - o poller já ajustou o intervalo
-                Serial.println("[MAIN] Rate limited, aguardando...");
                 break;
 
             case POLL_ERROR_NETWORK:
-                led_red();
-                s_error_count++;
-                if (s_error_count > MAX_ERRORS_BEFORE_RECONNECT) {
-                    ui_renderer_draw_error("Rede instável");
+                if (++s_error_count > MAX_ERRORS_BEFORE_RECONNECT) {
+                    ui_renderer_draw_error("Rede instavel");
+                    s_has_track = false;
                 }
                 break;
 
             case POLL_ERROR_PARSE:
             case POLL_ERROR_OTHER:
-                s_error_count++;
-                if (s_error_count > MAX_ERRORS_BEFORE_RECONNECT * 2) {
+                if (++s_error_count > MAX_ERRORS_BEFORE_RECONNECT * 2) {
                     s_state = STATE_ERROR;
                 }
                 break;
         }
     }
 
-    // ---- Interpolação local da barra de progresso ----
-    // Avança o progresso usando millis() entre polls
-    if (s_has_track && s_is_playing) {
-        if (now - s_last_progress_time >= PROGRESS_UPDATE_MS) {
+    if (s_has_track) {
+        // ---- Progresso interpolado ----
+        if (s_is_playing && now - s_last_progress_time >= PROGRESS_UPDATE_MS) {
             s_last_progress_time = now;
+            uint32_t p = s_local_progress_ms + (now - s_progress_sync_millis);
+            if (p > s_duration_ms) p = s_duration_ms;
+            ui_renderer_update_progress(p, s_duration_ms, true);
+        }
 
-            // Calcula progresso interpolado
-            unsigned long elapsed_since_sync = now - s_progress_sync_millis;
-            uint32_t interpolated = s_local_progress_ms + elapsed_since_sync;
+        if (now - s_last_marquee_time >= MARQUEE_UPDATE_MS) {
+            s_last_marquee_time = now;
+            ui_renderer_update_marquee();
+        }
 
-            // Limita ao máximo da duração
-            if (interpolated > s_duration_ms) {
-                interpolated = s_duration_ms;
-            }
-
-            // Atualiza barra de progresso sem fazer HTTP
-            ui_renderer_update_progress(interpolated, s_duration_ms, true);
+        if (now - s_last_eq_time >= EQ_UPDATE_MS) {
+            s_last_eq_time = now;
+            ui_renderer_update_equalizer(s_is_playing);
         }
     }
 
-    // ---- Atualiza animação marquee ----
-    if (s_has_track && (now - s_last_marquee_time >= MARQUEE_UPDATE_MS)) {
-        s_last_marquee_time = now;
-        ui_renderer_update_marquee();
-    }
-
-    // ---- Verifica comandos Serial ----
+    ui_renderer_tick();
+    update_screen_timeout();
     check_serial_commands();
 }
 
-// ============================================================
-// handle_state_error()
-// Estado de erro: exibe mensagem e tenta recuperar
-// ============================================================
-void handle_state_error() {
-    Serial.println("[MAIN] Estado de ERRO. Tentando recuperar em 10s...");
+static void handle_state_error() {
+    led_set(false);
     ui_renderer_draw_error("Erro persistente");
-
     delay(10000);
 
-    // Tenta reconectar tudo
-    if (wifi_is_connected() || wifi_reconnect()) {
-        if (spotify_auth_refresh()) {
-            s_error_count = 0;
-            s_state = STATE_POLLING;
-            s_last_poll_time = 0;
-            return;
-        }
+    if ((wifi_is_connected() || wifi_reconnect()) && spotify_auth_refresh()) {
+        s_error_count = 0;
+        s_has_track = false;
+        s_state = STATE_POLLING;
+        s_last_poll_time = 0;
+        return;
     }
-
-    // Se não conseguiu, reinicia
-    Serial.println("[MAIN] Recuperação falhou. Reiniciando...");
     ESP.restart();
 }
 
 // ============================================================
-// setup()
-// Inicialização do Arduino (chamado uma vez)
+// Arduino
 // ============================================================
 void setup() {
-    // Inicializa Serial
     Serial.begin(115200);
-    delay(500); // Aguarda estabilização
-
-    Serial.println();
-    Serial.println("[MAIN] Iniciando...");
-
-    // Começa na máquina de estados
+    delay(500);  // dá tempo da USB CDC aparecer no computador
     s_state = STATE_BOOT;
 }
 
-// ============================================================
-// loop()
-// Loop principal do Arduino.
-// Chama o handler do estado atual.
-// ============================================================
 void loop() {
     switch (s_state) {
-        case STATE_BOOT:
-            handle_state_boot();
-            break;
-
-        case STATE_WIFI_SETUP:
-            handle_state_wifi_setup();
-            break;
-
-        case STATE_AUTH_INIT:
-            handle_state_auth_init();
-            break;
-
-        case STATE_POLLING:
-            handle_state_polling();
-            break;
-
-        case STATE_ERROR:
-            handle_state_error();
-            break;
+        case STATE_BOOT:       handle_state_boot();       break;
+        case STATE_WIFI_SETUP: handle_state_wifi_setup(); break;
+        case STATE_AUTH_INIT:  handle_state_auth_init();  break;
+        case STATE_POLLING:    handle_state_polling();    break;
+        case STATE_ERROR:      handle_state_error();      break;
     }
-
-    // Yield para o watchdog e tarefas internas do ESP32
-    yield();
+    delay(2);  // cede tempo ao Wi-Fi e economiza um pouco de energia
 }

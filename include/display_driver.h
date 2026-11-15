@@ -2,11 +2,8 @@
 // display_driver.h
 // ============================================================
 // Camada de abstração do display.
-// Toda a configuração específica do controlador (ST7789, GC9A01, etc.)
-// fica isolada aqui. Para trocar de display, basta:
-//   1. Alterar os build_flags no platformio.ini (driver + pinos)
-//   2. Ajustar as constantes neste header se necessário
-// A lógica principal (ui_renderer) usa apenas a API pública abaixo.
+// A configuração do controlador (driver e pinos) fica nos
+// build_flags do platformio.ini. O ui_renderer só usa a API abaixo.
 // ============================================================
 
 #ifndef DISPLAY_DRIVER_H
@@ -16,17 +13,22 @@
 #include <TJpg_Decoder.h>
 
 // ---- Dimensões do display ----
-// ILI9341 2.8" - resolução 320x240 (paisagem, rotação 1)
-#define DISPLAY_WIDTH  320
-#define DISPLAY_HEIGHT 240
+// ST7735 1.8" 128x160, usado em paisagem (rotação 1) = 160x128
+#define DISPLAY_WIDTH  160
+#define DISPLAY_HEIGHT 128
 
-// ---- Cores customizadas (RGB565) ----
-#define COLOR_BG         TFT_BLACK
+// Rotação: 1 = paisagem, 3 = paisagem invertida (pinos do outro lado)
+#define DISPLAY_ROTATION 1
+
+// ---- Cores (RGB565) ----
+#define COLOR_BG             TFT_BLACK
 #define COLOR_TEXT_PRIMARY   TFT_WHITE
 #define COLOR_TEXT_SECONDARY 0xBDF7  // Cinza claro
+#define COLOR_TEXT_MUTED     0x7BEF  // Cinza médio
 #define COLOR_PROGRESS_BG    0x2104  // Cinza escuro
-#define COLOR_PROGRESS_FG    0x07E0  // Verde Spotify
-#define COLOR_SPOTIFY_GREEN  0x07E0
+#define COLOR_PROGRESS_FG    0x1DCA  // Verde Spotify (#1DB954)
+#define COLOR_SPOTIFY_GREEN  0x1DCA
+#define COLOR_COVER_EMPTY    0x18E3  // Fundo da capa enquanto carrega
 
 // ---- API pública ----
 
@@ -38,6 +40,9 @@ TFT_eSPI* display_get_tft();
 
 /// Liga/desliga o backlight
 void display_backlight(bool on);
+
+/// Indica se o backlight está ligado
+bool display_backlight_is_on();
 
 /// Limpa a tela inteira com a cor de fundo padrão
 void display_clear();

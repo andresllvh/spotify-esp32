@@ -1,9 +1,8 @@
 // ============================================================
 // json_parser.h
 // ============================================================
-// Módulo de parsing JSON para a resposta da API do Spotify.
-// Usa ArduinoJson com filtro de campos para economizar RAM,
-// extraindo apenas os campos necessários para exibição.
+// Parsing da resposta da API do Spotify com filtro do ArduinoJson,
+// guardando só os campos que a tela usa.
 // ============================================================
 
 #ifndef JSON_PARSER_H
@@ -11,27 +10,31 @@
 
 #include <Arduino.h>
 
-// Estrutura com as informações do track atual
+// Tamanho de capa preferido. O Spotify fornece 640, 300 e 64 px.
+// Na tela de 1.8" a capa ocupa 64x64, então a de 64 px é a ideal
+// (poucos KB, cabe folgado na RAM do ESP32-C3).
+#define COVER_TARGET_PX 64
+
 struct TrackInfo {
-    String track_name;      // Nome da música
-    String artist_name;     // Nome do(s) artista(s) concatenados
-    String track_id;        // ID único do track (para detectar mudança)
-    String cover_url;       // URL da menor imagem da capa
-    uint32_t progress_ms;   // Posição atual de reprodução (ms)
-    uint32_t duration_ms;   // Duração total da música (ms)
-    bool is_playing;        // true = tocando, false = pausado
+    String   track_name;
+    String   artist_name;   // artistas separados por ", "
+    String   track_id;      // muda quando a música muda
+    String   cover_url;     // capa mais próxima de COVER_TARGET_PX
+    uint32_t progress_ms;
+    uint32_t duration_ms;
+    bool     is_playing;
 };
 
-/// Parseia a resposta JSON da API /v1/me/player/currently-playing.
-/// Extrai apenas os campos necessários usando filtro ArduinoJson.
-/// Retorna true se o parse foi bem sucedido.
+/// Parseia direto do stream HTTP (não guarda a resposta inteira na RAM).
+bool json_parser_parse_stream(Stream& stream);
+
+/// Parseia a partir de uma String já carregada.
 bool json_parser_parse(const String& json_payload);
 
-/// Retorna ponteiro para o TrackInfo parseado.
-/// Válido apenas após uma chamada bem sucedida de json_parser_parse().
+/// Dados do último parse bem-sucedido
 TrackInfo* json_parser_get_track();
 
-/// Reseta os dados do track (usado quando não há nada tocando)
+/// Limpa os dados (usado quando não há nada tocando)
 void json_parser_reset();
 
 #endif // JSON_PARSER_H

@@ -2,8 +2,8 @@
 // spotify_poller.cpp
 // ============================================================
 // Implementação do polling da API do Spotify.
-// Faz GET em /v1/me/player/currently-playing e gerencia
-// download de capas de álbum via PSRAM.
+// Faz GET em /v1/me/player/currently-playing e baixa a capa
+// do álbum (64x64, poucos KB) para a RAM.
 // ============================================================
 
 #include "spotify_poller.h"
@@ -44,16 +44,17 @@ PollResult spotify_poller_poll() {
     client.setInsecure(); // Sem validação de certificado (simplificação)
 
     HTTPClient http;
+    // HTTP/1.0 desliga o "chunked", o que permite parsear direto do stream
+    http.useHTTP10(true);
     http.begin(client, SPOTIFY_NOW_PLAYING_URL);
 
-    // Header de autorização com Bearer token
-    String authHeader = "Bearer " + spotify_auth_get_access_token();
-    http.addHeader("Authorization", authHeader);
+    // Sem isso o HTTPClient descarta o Retry-After do 429
+    const char* headerKeys[] = {"Retry-After"};
+    http.collectHeaders(headerKeys, 1);
 
-    // Aceita JSON
+    http.addHeader("Authorization", "Bearer " + spotify_auth_get_access_token());
     http.addHeader("Accept", "application/json");
 
-    // Faz a requisição GET
     int httpCode = http.GET();
 
     // ---- Trata os códigos de resposta ----
@@ -89,11 +90,9 @@ PollResult spotify_poller_poll() {
 
     // 200 OK = resposta com dados
     if (httpCode == 200) {
-        String payload = http.getString();
+        bool parseOk = json_parser_parse_stream(http.getStream());
         http.end();
 
-        // Parseia a resposta JSON
-        bool parseOk = json_parser_parse(payload);
         if (!parseOk) {
             Serial.println("[POLLER] Erro ao parsear resposta JSON");
             s_next_poll_interval = POLL_INTERVAL_MS;
@@ -140,6 +139,14 @@ unsigned long spotify_poller_get_next_interval() {
 }
 
 // ============================================================
+// spotify_poller_set_next_interval()
+// Antecipa o próximo poll (ex.: logo depois de apertar um botão)
+// ============================================================
+void spotify_poller_set_next_interval(unsigned long interval_ms) {
+    s_next_poll_interval = interval_ms;
+}
+
+// ============================================================
 // spotify_poller_track_changed()
 // Indica se o track mudou desde a última verificação.
 // Consumido (resetado) após leitura.
@@ -152,9 +159,8 @@ bool spotify_poller_track_changed() {
 
 // ============================================================
 // spotify_poller_download_cover()
-// Baixa a imagem JPEG da capa do álbum para um buffer na PSRAM.
-// Usa ps_malloc() para alocar em PSRAM (evita fragmentar a RAM principal).
-// Retorna o tamanho dos dados baixados, ou 0 em caso de erro.
+// Baixa a imagem JPEG da capa do álbum para um buffer na RAM
+// (usa PSRAM se a placa tiver). Retorna o tamanho baixado ou 0.
 // O chamador deve liberar o buffer com spotify_poller_free_cover().
 // ============================================================
 uint32_t spotify_poller_download_cover(const String& url, uint8_t** out_buffer) {
@@ -169,6 +175,7 @@ uint32_t spotify_poller_download_cover(const String& url, uint8_t** out_buffer) 
     client.setInsecure();
 
     HTTPClient http;
+    http.useHTTP10(true);
     http.begin(client, url);
     http.addHeader("Accept", "image/jpeg");
 
@@ -211,7 +218,7 @@ uint32_t spotify_poller_download_cover(const String& url, uint8_t** out_buffer) 
     uint32_t bytesRead = 0;
     uint32_t timeout = millis() + 10000; // Timeout de 10s
 
-    while (http.connected() && (bytesRead < (uint32_t)contentLength)) {
+    while ((http.connected() || stream->available()) && (bytesRead < (uint32_t)contentLength)) {
         // Verifica timeout
         if (millis() > timeout) {
             Serial.println("[POLLER] Timeout ao baixar capa");
