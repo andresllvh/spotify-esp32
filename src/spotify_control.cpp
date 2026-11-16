@@ -22,7 +22,7 @@ static int sendCommand(const char* method, const char* path) {
     http.addHeader("Content-Length", "0");
     int code = (strcmp(method, "PUT") == 0) ? http.PUT("") : http.POST("");
 
-        Serial.printf("[CONTROL] %s %s -> HTTP %d\r\n", method, path, code);
+    Serial.printf("[CONTROL] %s %s -> HTTP %d\r\n", method, path, code);
     http.end();
     return code;
 }
