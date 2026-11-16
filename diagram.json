@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "author": "André Laureano",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-c3-devkitm-1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-ili9341", "id": "lcd", "top": -150, "left": 220, "rotate": 90, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btnPrev", "top": 230, "left": 200, "attrs": { "color": "white", "label": "Anterior" } },
+    { "type": "wokwi-pushbutton", "id": "btnPlay", "top": 230, "left": 310, "attrs": { "color": "green", "label": "Play/Pause" } },
+    { "type": "wokwi-pushbutton", "id": "btnNext", "top": 230, "left": 420, "attrs": { "color": "white", "label": "Próxima" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "lcd:VCC", "esp:3V3.1", "red", [] ],
+    [ "lcd:GND", "esp:GND.1", "black", [] ],
+    [ "lcd:SCK", "esp:4", "orange", [] ],
+    [ "lcd:MOSI", "esp:6", "blue", [] ],
+    [ "lcd:CS", "esp:7", "purple", [] ],
+    [ "lcd:D/C", "esp:3", "yellow", [] ],
+    [ "lcd:RST", "esp:10", "gray", [] ],
+    [ "lcd:LED", "esp:5", "white", [] ],
+    [ "btnPrev:1.l", "esp:0", "green", [] ],
+    [ "btnPrev:2.l", "esp:GND.2", "black", [] ],
+    [ "btnPlay:1.l", "esp:1", "green", [] ],
+    [ "btnPlay:2.l", "esp:GND.3", "black", [] ],
+    [ "btnNext:1.l", "esp:20", "green", [] ],
+    [ "btnNext:2.l", "esp:GND.4", "black", [] ]
+  ],
+  "dependencies": {}
+}

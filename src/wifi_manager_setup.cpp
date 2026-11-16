@@ -16,6 +16,13 @@ static WiFiManager wm;
 // Tenta conectar com credenciais salvas. Se falhar, abre o portal.
 // ============================================================
 bool wifi_setup_init() {
+#ifdef WOKWI
+    // No simulador não há portal cativo: usa a rede aberta do Wokwi
+    Serial.println("[WIFI] Wokwi: conectando em Wokwi-GUEST...");
+    WiFi.begin("Wokwi-GUEST", "", 6);
+    for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(250);
+    return WiFi.status() == WL_CONNECTED;
+#endif
     // Define timeout do portal cativo
     wm.setConfigPortalTimeout(PORTAL_TIMEOUT);
 

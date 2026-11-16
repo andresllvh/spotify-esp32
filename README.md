@@ -141,6 +141,17 @@ No modo demo, espaço pausa e as setas trocam de música. Sem `--demo`, o simula
 
 No macOS com Python do Homebrew, o Tkinter vem separado. Instale com `brew install python-tk`.
 
+## Simulação no Wokwi
+
+O projeto roda no [Wokwi](https://wokwi.com), sem a placa, pelo VS Code:
+
+1. Instale as extensões **PlatformIO IDE** e **Wokwi Simulator** no VS Code e ative a licença gratuita do Wokwi (`F1` > `Wokwi: Request a New License`).
+2. Compile o ambiente do simulador: `pio run -e wokwi`.
+3. Abra o `diagram.json` e aperte play.
+4. No terminal serial do Wokwi, cole o `SET_CREDS:...`. O Wi-Fi conecta sozinho na rede simulada `Wokwi-GUEST`.
+
+O Wokwi não tem o display ST7735, então a simulação usa o ILI9341 com os mesmos pinos. A interface aparece no canto superior esquerdo da tela.
+
 ## Ajustes
 
 - **Cores ou bordas erradas na tela:** troque `-DST7735_BLACKTAB=1` no `platformio.ini` por `ST7735_GREENTAB`, `ST7735_GREENTAB2` ou `ST7735_REDTAB`.
