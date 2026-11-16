@@ -115,7 +115,7 @@ Na primeira vez, a placa cria a rede `SpotifyDisplay-Setup`. Conecte pelo celula
 
 ## Uso
 
-- A tela atualiza a cada 4 segundos. A barra de progresso avança sozinha entre as consultas.
+- A tela atualiza a cada 2 segundos. A barra de progresso avança sozinha entre as consultas.
 - Os botões controlam o aparelho que está tocando o Spotify, como o celular.
 - Depois de 2 minutos sem música tocando, a tela apaga para poupar bateria. Qualquer botão acende de novo.
 - Com a bateria de 400 mAh, a autonomia estimada é de 3 a 4 horas com a tela ligada.
@@ -150,7 +150,7 @@ O projeto roda no [Wokwi](https://wokwi.com), sem a placa, pelo VS Code:
 3. Abra o `diagram.json` e aperte play.
 4. No terminal serial do Wokwi, cole o `SET_CREDS:...`. O Wi-Fi conecta sozinho na rede simulada `Wokwi-GUEST`.
 
-O Wokwi não tem o display ST7735, então a simulação usa o ILI9341 com os mesmos pinos. A interface aparece no canto superior esquerdo da tela.
+O Wokwi não tem o display ST7735, então a simulação usa o ILI9341 com os mesmos pinos. A interface aparece centralizada, com uma moldura do tamanho da tela real. No simulador, o botão "próxima" fica no GPIO19, porque o GPIO20 é usado pela serial.
 
 ## Ajustes
 

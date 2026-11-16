@@ -152,6 +152,7 @@ static void show_control_result(ControlResult r) {
 static void handle_buttons() {
     ButtonEvent ev = buttons_poll();
     if (ev == BUTTON_NONE) return;
+    Serial.printf("[BTN] %s\n", ev == BUTTON_PLAY ? "play/pause" : ev == BUTTON_NEXT ? "proxima" : "anterior");
 
     // Com a tela apagada, o primeiro aperto só acende
     bool was_off = !display_backlight_is_on();

@@ -12,7 +12,7 @@
 #include <Arduino.h>
 
 // Intervalo de polling em milissegundos (3-5 segundos)
-#define POLL_INTERVAL_MS 4000
+#define POLL_INTERVAL_MS 2000
 
 // URL da API de currently-playing
 #define SPOTIFY_NOW_PLAYING_URL "https://api.spotify.com/v1/me/player/currently-playing"

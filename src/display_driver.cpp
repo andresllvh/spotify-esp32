@@ -13,6 +13,15 @@ static bool s_backlight_on = false;
 void display_init() {
     tft.init();
     tft.setRotation(DISPLAY_ROTATION);
+#ifdef WOKWI
+    // Simulador: a ILI9341 tem 320x240. Desenha uma moldura e centraliza
+    // a área de 160x128, do tamanho da tela real.
+    tft.fillScreen(0x2104);
+    tft.drawRect((tft.width() - DISPLAY_WIDTH) / 2 - 1, (tft.height() - DISPLAY_HEIGHT) / 2 - 1,
+                 DISPLAY_WIDTH + 2, DISPLAY_HEIGHT + 2, 0x7BEF);
+    tft.setViewport((tft.width() - DISPLAY_WIDTH) / 2, (tft.height() - DISPLAY_HEIGHT) / 2,
+                    DISPLAY_WIDTH, DISPLAY_HEIGHT);
+#endif
     tft.fillScreen(COLOR_BG);
 
     // Liga a luz de fundo só depois de limpar a tela (evita "lixo" na tela)
@@ -26,7 +35,11 @@ void display_init() {
     TJpgDec.setSwapBytes(true);
     TJpgDec.setCallback(display_jpeg_output);
 
+    #ifdef WOKWI
+    Serial.println("[DISPLAY] Inicializado (simulador ILI9341, area 160x128)");
+#else
     Serial.println("[DISPLAY] Inicializado (ST7735 160x128)");
+#endif
 }
 
 TFT_eSPI* display_get_tft() {

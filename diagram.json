@@ -24,7 +24,7 @@
     [ "btnPrev:2.l", "esp:GND.2", "black", [] ],
     [ "btnPlay:1.l", "esp:1", "green", [] ],
     [ "btnPlay:2.l", "esp:GND.3", "black", [] ],
-    [ "btnNext:1.l", "esp:20", "green", [] ],
+    [ "btnNext:1.l", "esp:19", "green", [] ],
     [ "btnNext:2.l", "esp:GND.4", "black", [] ]
   ],
   "dependencies": {}
