@@ -149,6 +149,18 @@ static void show_control_result(ControlResult r) {
     }
 }
 
+// Atualiza estado, LED e ícone; o progresso para de avançar ao pausar
+static void apply_play_state(bool playing) {
+    if (s_is_playing) {
+        s_local_progress_ms += millis() - s_progress_sync_millis;
+        if (s_local_progress_ms > s_duration_ms) s_local_progress_ms = s_duration_ms;
+    }
+    s_progress_sync_millis = millis();
+    s_is_playing = playing;
+    led_set(playing);
+    ui_renderer_update_play_state(playing);
+}
+
 static void handle_buttons() {
     ButtonEvent ev = buttons_poll();
     if (ev == BUTTON_NONE) return;
@@ -164,16 +176,11 @@ static void handle_buttons() {
         case BUTTON_PLAY: {
             if (s_has_track) ui_renderer_flash_control(UI_CTRL_PLAY);
             bool want_play = !s_is_playing;
+            // Muda o ícone antes da resposta do Spotify, para o clique
+            // parecer instantâneo; se o comando falhar, volta ao estado anterior.
+            if (s_has_track) apply_play_state(want_play);
             r = want_play ? spotify_control_play() : spotify_control_pause();
-            if (r == CONTROL_OK && s_has_track) {
-                // Atualiza a tela na hora; o próximo poll confirma
-                s_local_progress_ms += millis() - s_progress_sync_millis;
-                if (s_local_progress_ms > s_duration_ms) s_local_progress_ms = s_duration_ms;
-                s_progress_sync_millis = millis();
-                s_is_playing = want_play;
-                led_set(want_play);
-                ui_renderer_update_play_state(want_play);
-            }
+            if (r != CONTROL_OK && s_has_track) apply_play_state(!want_play);
             spotify_poller_set_next_interval(800);
             break;
         }
