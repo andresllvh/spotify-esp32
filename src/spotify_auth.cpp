@@ -213,12 +213,12 @@ bool spotify_auth_refresh() {
         }
 
         Serial.println("[AUTH] Token renovado com sucesso!");
-        Serial.printf("[AUTH] Expira em %d segundos\n", expires_in);
+        Serial.printf("[AUTH] Expira em %d segundos\r\n", expires_in);
 
         http.end();
         return true;
     } else {
-        Serial.printf("[AUTH] Erro HTTP %d ao renovar token\n", httpCode);
+        Serial.printf("[AUTH] Erro HTTP %d ao renovar token\r\n", httpCode);
         if (httpCode > 0) {
             Serial.println(http.getString());
         }

@@ -110,11 +110,11 @@ static void check_serial_commands() {
         delay(1000);
         ESP.restart();
     } else if (input == "STATUS") {
-        Serial.printf("[MAIN] Estado: %d\n", s_state);
-        Serial.printf("[MAIN] Wi-Fi: %s (RSSI %d dBm)\n",
+        Serial.printf("[MAIN] Estado: %d\r\n", s_state);
+        Serial.printf("[MAIN] Wi-Fi: %s (RSSI %d dBm)\r\n",
                       wifi_is_connected() ? "OK" : "Desconectado", WiFi.RSSI());
-        Serial.printf("[MAIN] Token: %s\n", spotify_auth_token_expired() ? "Expirado" : "Valido");
-        Serial.printf("[MAIN] Heap livre: %u bytes (minimo %u)\n",
+        Serial.printf("[MAIN] Token: %s\r\n", spotify_auth_token_expired() ? "Expirado" : "Valido");
+        Serial.printf("[MAIN] Heap livre: %u bytes (minimo %u)\r\n",
                       ESP.getFreeHeap(), ESP.getMinFreeHeap());
     }
 }
@@ -152,7 +152,7 @@ static void show_control_result(ControlResult r) {
 static void handle_buttons() {
     ButtonEvent ev = buttons_poll();
     if (ev == BUTTON_NONE) return;
-    Serial.printf("[BTN] %s\n", ev == BUTTON_PLAY ? "play/pause" : ev == BUTTON_NEXT ? "proxima" : "anterior");
+    Serial.printf("[BTN] %s\r\n", ev == BUTTON_PLAY ? "play/pause" : ev == BUTTON_NEXT ? "proxima" : "anterior");
 
     // Com a tela apagada, o primeiro aperto só acende
     bool was_off = !display_backlight_is_on();
@@ -201,7 +201,7 @@ static void handle_state_boot() {
     Serial.println("\n====================================");
     Serial.println("  Spotify Now Playing - chaveiro");
     Serial.println("====================================");
-    Serial.printf("Heap livre: %u bytes\n\n", ESP.getFreeHeap());
+    Serial.printf("Heap livre: %u bytes\n\r\n", ESP.getFreeHeap());
 
     led_init();
     led_set(false);

@@ -61,7 +61,7 @@ static bool extract(JsonDocument& doc) {
     }
     s_track.cover_url = bestUrl;
 
-    Serial.printf("[PARSER] %s - %s | %u/%u ms\n",
+    Serial.printf("[PARSER] %s - %s | %u/%u ms\r\n",
                   s_track.artist_name.c_str(), s_track.track_name.c_str(),
                   s_track.progress_ms, s_track.duration_ms);
     return true;
@@ -74,7 +74,7 @@ bool json_parser_parse_stream(Stream& stream) {
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, stream, DeserializationOption::Filter(filter));
     if (error) {
-        Serial.printf("[PARSER] Erro ArduinoJson: %s\n", error.c_str());
+        Serial.printf("[PARSER] Erro ArduinoJson: %s\r\n", error.c_str());
         return false;
     }
     return extract(doc);
@@ -87,7 +87,7 @@ bool json_parser_parse(const String& json_payload) {
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json_payload, DeserializationOption::Filter(filter));
     if (error) {
-        Serial.printf("[PARSER] Erro ArduinoJson: %s\n", error.c_str());
+        Serial.printf("[PARSER] Erro ArduinoJson: %s\r\n", error.c_str());
         return false;
     }
     return extract(doc);

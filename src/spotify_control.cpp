@@ -21,9 +21,9 @@ static int sendCommand(const char* method, const char* path) {
     int code = (strcmp(method, "PUT") == 0) ? http.PUT("") : http.POST("");
 
     if (code >= 400) {
-        Serial.printf("[CONTROL] %s %s -> HTTP %d %s\n", method, path, code, http.getString().c_str());
+        Serial.printf("[CONTROL] %s %s -> HTTP %d %s\r\n", method, path, code, http.getString().c_str());
     } else {
-        Serial.printf("[CONTROL] %s %s -> HTTP %d\n", method, path, code);
+        Serial.printf("[CONTROL] %s %s -> HTTP %d\r\n", method, path, code);
     }
     http.end();
     return code;

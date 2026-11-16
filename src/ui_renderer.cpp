@@ -276,7 +276,7 @@ void ui_renderer_draw_cover(uint8_t* jpeg_data, uint32_t jpeg_size) {
         scale *= 2;
     }
     uint16_t w = img_w / scale, h = img_h / scale;
-    Serial.printf("[UI] Capa %ux%u, escala 1/%u -> %ux%u\n", img_w, img_h, scale, w, h);
+    Serial.printf("[UI] Capa %ux%u, escala 1/%u -> %ux%u\r\n", img_w, img_h, scale, w, h);
 
     if (w < COVER_SIZE || h < COVER_SIZE) {
         tft->fillRect(COVER_X, COVER_Y, COVER_SIZE, COVER_SIZE, COLOR_BG);

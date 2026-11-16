@@ -83,7 +83,7 @@ PollResult spotify_poller_poll() {
         if (waitSec <= 0) waitSec = 30; // Padrão seguro
         s_next_poll_interval = waitSec * 1000UL;
 
-        Serial.printf("[POLLER] 429 - Rate limited. Aguardando %d segundos\n", waitSec);
+        Serial.printf("[POLLER] 429 - Rate limited. Aguardando %d segundos\r\n", waitSec);
         http.end();
         return POLL_RATE_LIMITED;
     }
@@ -104,7 +104,7 @@ PollResult spotify_poller_poll() {
         if (track->track_id != s_last_track_id) {
             s_last_track_id = track->track_id;
             s_track_changed = true;
-            Serial.printf("[POLLER] Novo track: %s - %s\n",
+            Serial.printf("[POLLER] Novo track: %s - %s\r\n",
                           track->artist_name.c_str(),
                           track->track_name.c_str());
         }
@@ -117,14 +117,14 @@ PollResult spotify_poller_poll() {
 
     // Erros de conexão (httpCode negativo)
     if (httpCode < 0) {
-        Serial.printf("[POLLER] Erro de rede: %s\n", http.errorToString(httpCode).c_str());
+        Serial.printf("[POLLER] Erro de rede: %s\r\n", http.errorToString(httpCode).c_str());
         http.end();
         s_next_poll_interval = 5000; // Espera um pouco mais
         return POLL_ERROR_NETWORK;
     }
 
     // Qualquer outro código HTTP
-    Serial.printf("[POLLER] Erro HTTP inesperado: %d\n", httpCode);
+    Serial.printf("[POLLER] Erro HTTP inesperado: %d\r\n", httpCode);
     http.end();
     s_next_poll_interval = POLL_INTERVAL_MS;
     return POLL_ERROR_OTHER;
@@ -169,7 +169,7 @@ uint32_t spotify_poller_download_cover(const String& url, uint8_t** out_buffer) 
         return 0;
     }
 
-    Serial.printf("[POLLER] Baixando capa: %s\n", url.c_str());
+    Serial.printf("[POLLER] Baixando capa: %s\r\n", url.c_str());
 
     WiFiClientSecure client;
     client.setInsecure();
@@ -182,7 +182,7 @@ uint32_t spotify_poller_download_cover(const String& url, uint8_t** out_buffer) 
     int httpCode = http.GET();
 
     if (httpCode != 200) {
-        Serial.printf("[POLLER] Erro ao baixar capa: HTTP %d\n", httpCode);
+        Serial.printf("[POLLER] Erro ao baixar capa: HTTP %d\r\n", httpCode);
         http.end();
         return 0;
     }
@@ -195,7 +195,7 @@ uint32_t spotify_poller_download_cover(const String& url, uint8_t** out_buffer) 
     }
 
     if (contentLength > COVER_BUFFER_MAX_SIZE) {
-        Serial.printf("[POLLER] Capa muito grande: %d bytes\n", contentLength);
+        Serial.printf("[POLLER] Capa muito grande: %d bytes\r\n", contentLength);
         http.end();
         return 0;
     }
@@ -244,7 +244,7 @@ uint32_t spotify_poller_download_cover(const String& url, uint8_t** out_buffer) 
         return 0;
     }
 
-    Serial.printf("[POLLER] Capa baixada: %u bytes\n", bytesRead);
+    Serial.printf("[POLLER] Capa baixada: %u bytes\r\n", bytesRead);
     *out_buffer = buffer;
     return bytesRead;
 }
