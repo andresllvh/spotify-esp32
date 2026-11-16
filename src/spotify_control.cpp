@@ -17,14 +17,12 @@ static int sendCommand(const char* method, const char* path) {
     http.begin(client, String(PLAYER_URL) + path);
     http.addHeader("Authorization", "Bearer " + spotify_auth_get_access_token());
 
-    // Corpo vazio; o HTTPClient envia Content-Length: 0, que a API exige
+    // Corpo vazio: o HTTPClient não manda Content-Length sozinho,
+    // e a API responde 411 sem ele.
+    http.addHeader("Content-Length", "0");
     int code = (strcmp(method, "PUT") == 0) ? http.PUT("") : http.POST("");
 
-    if (code >= 400) {
-        Serial.printf("[CONTROL] %s %s -> HTTP %d %s\r\n", method, path, code, http.getString().c_str());
-    } else {
         Serial.printf("[CONTROL] %s %s -> HTTP %d\r\n", method, path, code);
-    }
     http.end();
     return code;
 }
