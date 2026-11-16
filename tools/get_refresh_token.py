@@ -152,7 +152,16 @@ def main():
     print()
 
     # Valida configuração
-    if CLIENT_ID == "SEU_CLIENT_ID_AQUI" or CLIENT_SECRET == "SEU_CLIENT_SECRET_AQUI":
+    global CLIENT_ID, CLIENT_SECRET
+    placeholders = ("", "SEU_CLIENT_ID_AQUI", "SEU_CLIENT_SECRET_AQUI", "SEU_CLIENT_ID", "SEU_CLIENT_SECRET",
+                    "seu_id", "seu_secret", "cole_aqui_o_client_id", "cole_aqui_o_client_secret")
+    if CLIENT_ID in placeholders or len(CLIENT_ID) != 32:
+        CLIENT_ID = input("Cole o Client ID e aperte Enter: ").strip()
+    if CLIENT_SECRET in placeholders or len(CLIENT_SECRET) != 32:
+        import getpass
+        CLIENT_SECRET = getpass.getpass("Cole o Client Secret (não aparece na tela) e aperte Enter: ").strip()
+
+    if len(CLIENT_ID) != 32 or len(CLIENT_SECRET) != 32:
         print("ERRO: Configure CLIENT_ID e CLIENT_SECRET!")
         print()
         print("Opções:")
